@@ -1,0 +1,746 @@
+openapi: 3.0.3
+info:
+  title: Wallet API
+  version: 1.0.0
+  description: >
+    API za prijenos resursa između virtualnih novčanika.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: System
+    description: Health check i osnovne rute
+  - name: Users
+    description: login i CRUD korisnika
+  - name: Wallets
+    description: CRUD novčanika (samo vlasnik)
+  - name: Transfers
+    description: Transferi između novčanika + pregled transfera
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Missing Authorization header!
+      required: [message]
+
+    ValidationError:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Validation error
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+                example: id
+              message:
+                type: string
+                example: "Validation error!"
+      required: [message, details]
+
+    RootResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Wallet API is running
+      required: [message]
+
+    HealthResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+      required: [ok]
+
+    RegisterRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          example: josip123
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          example: password123
+      required: [username, password]
+
+    LoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          example: josip123
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          example: password123
+      required: [username, password]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: josip123
+      required: [id, username]
+
+    UserWithCreatedAt:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: josip123
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-01-11T12:00:00.000Z"
+      required: [id, username, created_at]
+
+    LoginResponse:
+      type: object
+      properties:
+        jwtToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      required: [jwtToken]
+
+    Wallet:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 10
+        user_id:
+          type: integer
+          example: 1
+        balance:
+          description: >
+            Postgres DECIMAL se često serializira kao string.
+            Klijent može parsirati u number.
+          oneOf:
+            - type: string
+              example: "100.50"
+            - type: number
+              format: float
+              example: 100.5
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-01-11T12:00:00.000Z"
+      required: [id, user_id, balance, created_at]
+
+    DepositWalletRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: float
+          exclusiveMinimum: 0
+          example: 50.25
+      required: [amount]
+
+    CreateTransferRequest:
+      type: object
+      properties:
+        fromWalletId:
+          type: integer
+          minimum: 1
+          example: 1
+        toWalletId:
+          type: integer
+          minimum: 1
+          example: 2
+        amount:
+          type: number
+          format: float
+          exclusiveMinimum: 0
+          example: 25.5
+      required: [fromWalletId, toWalletId, amount]
+
+    Transfer:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 100
+        from_wallet_id:
+          type: integer
+          example: 1
+        to_wallet_id:
+          type: integer
+          example: 2
+        amount:
+          oneOf:
+            - type: string
+              example: "25.50"
+            - type: number
+              format: float
+              example: 25.5
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-01-11T12:10:00.000Z"
+      required: [id, from_wallet_id, to_wallet_id, amount, created_at]
+
+paths:
+  /:
+    get:
+      tags: [System]
+      summary: Root
+      responses:
+        "200":
+          description: API is running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootResponse"
+
+  /health:
+    get:
+      tags: [System]
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /users/register:
+    post:
+      tags: [Users]
+      summary: Register user
+      description: Kreira novog korisnika (username + password). Lozinka se hashira.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "409":
+          description: Username already exists
+          content:
+            application/json:
+              example: { message: "Username already exists" }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /users/login:
+    post:
+      tags: [Users]
+      summary: Login
+      description: Login s username i password, vraća JWT token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Wrong credentials / user missing
+          content:
+            application/json:
+              examples:
+                invalidCredentials:
+                  value: { message: "Wrong username or password" }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      description: Vraća listu korisnika. Zaštićeno JWT-om.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserWithCreatedAt"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              examples:
+                missingHeader:
+                  value: { message: "Missing Authorization header!" }
+                invalidToken:
+                  value: { message: "Invalid or expired token" }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserWithCreatedAt"
+        "400":
+          description: Invalid id param
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              example: { message: "User not found" }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    put:
+      tags: [Users]
+      summary: Update user (self only)
+      description: Korisnik može updateati samo svoj account (authorizeSelf).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden (not self)
+          content:
+            application/json:
+              example:
+                { message: "Forbidden: you can only modify your own account" }
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              example: { message: "User not found" }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Users]
+      summary: Delete user (self only)
+      description: Korisnik može obrisati samo svoj account (authorizeSelf).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Deleted user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid id param
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden (not self)
+          content:
+            application/json:
+              example:
+                { message: "Forbidden: you can only modify your own account" }
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              example: { message: "User not found" }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /wallets:
+    post:
+      tags: [Wallets]
+      summary: Create wallet
+      description: Kreira novi novčanik za ulogiranog korisnika (balance default 0).
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Wallet created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags: [Wallets]
+      summary: List wallets (for logged user)
+      description: Vraća sve novčanike ulogiranog korisnika.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of wallets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Wallet"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /wallets/{id}:
+    get:
+      tags: [Wallets]
+      summary: Get wallet by id (owner only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Wallet found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+        "400":
+          description: Invalid id param
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden (not owner)
+          content:
+            application/json:
+              example: { message: "Forbidden" }
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Wallet not found
+          content:
+            application/json:
+              example: { message: "Wallet not found" }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Wallets]
+      summary: Delete wallet (owner only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Wallet deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+        "400":
+          description: Invalid id param
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden (not owner)
+          content:
+            application/json:
+              example: { message: "Forbidden" }
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Wallet not found
+          content:
+            application/json:
+              example: { message: "Wallet not found" }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /wallets/{id}/deposits:
+    post:
+      tags: [Wallets]
+      summary: Deposit into wallet (owner only)
+      description: Adds funds to the authenticated user's wallet.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositWalletRequest"
+      responses:
+        "200":
+          description: Wallet updated after deposit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden (not owner)
+          content:
+            application/json:
+              example: { message: "Forbidden" }
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Wallet not found
+          content:
+            application/json:
+              example: { message: "Wallet not found" }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /transfers:
+    post:
+      tags: [Transfers]
+      summary: Create transfer
+      description: >
+        Prebacuje sredstva s jednog novčanika na drugi uz validaciju.
+        Transfer se pamti u bazi. Korisnik smije slati samo s vlastitog novčanika.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransferRequest"
+            examples:
+              example1:
+                value:
+                  fromWalletId: 1
+                  toWalletId: 2
+                  amount: 25.5
+      responses:
+        "201":
+          description: Transfer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transfer"
+        "400":
+          description: Bad request (validation/same wallet/insufficient funds)
+          content:
+            application/json:
+              examples:
+                sameWallet:
+                  value: { message: "Cannot transfer to same wallet" }
+                insufficientFunds:
+                  value: { message: "Insufficient funds" }
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden (from wallet not owned by user)
+          content:
+            application/json:
+              example:
+                { message: "Forbidden: you can only modify your own account" }
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Wallet not found
+          content:
+            application/json:
+              examples:
+                fromNotFound:
+                  value: { message: "From wallet not found" }
+                toNotFound:
+                  value: { message: "To wallet not found" }
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              example: { message: "Internal Server Error! " }
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags: [Transfers]
+      summary: List transfers for logged user
+      description: Vraća sve transfere u kojima sudjeluje korisnik (incoming ili outgoing).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of transfers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Transfer"
+        "401":
+          description: Missing/invalid token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
