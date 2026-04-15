@@ -81,6 +81,7 @@ Important variables:
 - Test commands force `NODE_ENV=test` and use `wallet_test_db`.
 
 This keeps test resets away from development data.
+Tests always run against the dedicated PostgreSQL test database (`wallet_test_db`) so local development data is not modified.
 
 ## Useful Commands
 

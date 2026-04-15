@@ -106,3 +106,4 @@ Important transfer invariants:
 - Test DB: `wallet_test_db`
 
 Test scripts explicitly run with `NODE_ENV=test`, and the test harness truncates test tables before each test for deterministic integration tests.
+CI validates the backend by running lint and the full test suite against that isolated test database.
