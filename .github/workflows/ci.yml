@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - public-backend
   pull_request:
 
 jobs:
