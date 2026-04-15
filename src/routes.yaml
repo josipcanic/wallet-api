@@ -3,7 +3,7 @@ info:
   title: Wallet API
   version: 1.0.0
   description: >
-    API za prijenos resursa između virtualnih novčanika.
+    REST API for authenticated wallet management and transfers.
 
 servers:
   - url: http://localhost:3000
@@ -11,13 +11,13 @@ servers:
 
 tags:
   - name: System
-    description: Health check i osnovne rute
+    description: Health check and base routes
   - name: Users
-    description: login i CRUD korisnika
+    description: User authentication and account management
   - name: Wallets
-    description: CRUD novčanika (samo vlasnik)
+    description: Wallet creation, ownership, deposits, and deletion
   - name: Transfers
-    description: Transferi između novčanika + pregled transfera
+    description: Transfers between wallets and transfer history
 
 components:
   securitySchemes:
@@ -145,8 +145,8 @@ components:
           example: 1
         balance:
           description: >
-            Postgres DECIMAL se često serializira kao string.
-            Klijent može parsirati u number.
+            PostgreSQL DECIMAL values are often serialized as strings.
+            Clients may parse them into numbers if needed.
           oneOf:
             - type: string
               example: "100.50"
@@ -241,7 +241,8 @@ paths:
     post:
       tags: [Users]
       summary: Register user
-      description: Kreira novog korisnika (username + password). Lozinka se hashira.
+      description: Creates a new user with a hashed password.
+      operationId: registerUser
       requestBody:
         required: true
         content:
@@ -273,7 +274,8 @@ paths:
     post:
       tags: [Users]
       summary: Login
-      description: Login s username i password, vraća JWT token.
+      description: Authenticates a user and returns a JWT.
+      operationId: loginUser
       requestBody:
         required: true
         content:
@@ -294,7 +296,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationError"
         "401":
-          description: Wrong credentials / user missing
+          description: Invalid credentials
           content:
             application/json:
               examples:
@@ -307,7 +309,8 @@ paths:
     get:
       tags: [Users]
       summary: List users
-      description: Vraća listu korisnika. Zaštićeno JWT-om.
+      description: Returns all users. Requires JWT authentication.
+      operationId: listUsers
       security:
         - bearerAuth: []
       responses:
@@ -335,6 +338,7 @@ paths:
     get:
       tags: [Users]
       summary: Get user by id
+      operationId: getUserById
       security:
         - bearerAuth: []
       parameters:
@@ -372,7 +376,8 @@ paths:
     put:
       tags: [Users]
       summary: Update user (self only)
-      description: Korisnik može updateati samo svoj account (authorizeSelf).
+      description: Updates the authenticated user's own account only.
+      operationId: updateUser
       security:
         - bearerAuth: []
       parameters:
@@ -424,7 +429,8 @@ paths:
     delete:
       tags: [Users]
       summary: Delete user (self only)
-      description: Korisnik može obrisati samo svoj account (authorizeSelf).
+      description: Deletes the authenticated user's own account only.
+      operationId: deleteUser
       security:
         - bearerAuth: []
       parameters:
@@ -471,7 +477,8 @@ paths:
     post:
       tags: [Wallets]
       summary: Create wallet
-      description: Kreira novi novčanik za ulogiranog korisnika (balance default 0).
+      description: Creates a new wallet for the authenticated user with zero balance.
+      operationId: createWallet
       security:
         - bearerAuth: []
       responses:
@@ -491,7 +498,8 @@ paths:
     get:
       tags: [Wallets]
       summary: List wallets (for logged user)
-      description: Vraća sve novčanike ulogiranog korisnika.
+      description: Returns all wallets owned by the authenticated user.
+      operationId: listWallets
       security:
         - bearerAuth: []
       responses:
@@ -514,6 +522,7 @@ paths:
     get:
       tags: [Wallets]
       summary: Get wallet by id (owner only)
+      operationId: getWalletById
       security:
         - bearerAuth: []
       parameters:
@@ -558,6 +567,7 @@ paths:
     delete:
       tags: [Wallets]
       summary: Delete wallet (owner only)
+      operationId: deleteWallet
       security:
         - bearerAuth: []
       parameters:
@@ -604,6 +614,7 @@ paths:
       tags: [Wallets]
       summary: Deposit into wallet (owner only)
       description: Adds funds to the authenticated user's wallet.
+      operationId: depositIntoWallet
       security:
         - bearerAuth: []
       parameters:
@@ -656,8 +667,10 @@ paths:
       tags: [Transfers]
       summary: Create transfer
       description: >
-        Prebacuje sredstva s jednog novčanika na drugi uz validaciju.
-        Transfer se pamti u bazi. Korisnik smije slati samo s vlastitog novčanika.
+        Moves funds from one wallet to another with ownership and balance checks.
+        Transfers are stored in the database and may only originate from wallets
+        owned by the authenticated user.
+      operationId: createTransfer
       security:
         - bearerAuth: []
       requestBody:
@@ -700,8 +713,7 @@ paths:
           description: Forbidden (from wallet not owned by user)
           content:
             application/json:
-              example:
-                { message: "Forbidden: you can only modify your own account" }
+              example: { message: "Forbidden" }
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
@@ -719,14 +731,15 @@ paths:
           description: Server error
           content:
             application/json:
-              example: { message: "Internal Server Error! " }
+              example: { message: "Internal server error" }
               schema:
                 $ref: "#/components/schemas/Error"
 
     get:
       tags: [Transfers]
       summary: List transfers for logged user
-      description: Vraća sve transfere u kojima sudjeluje korisnik (incoming ili outgoing).
+      description: Returns transfers involving the authenticated user's wallets.
+      operationId: listTransfers
       security:
         - bearerAuth: []
       responses:
