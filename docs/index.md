@@ -2,6 +2,8 @@
 
 This directory is the repository-local knowledge base.
 
+The docs in this folder should match the code in `src/`, the integration tests in `tests/`, and the npm scripts in `package.json`.
+
 ## Product Specs
 
 - [users.md](./product-specs/users.md)
@@ -15,7 +17,7 @@ This directory is the repository-local knowledge base.
 
 ## Generated References
 
-- [route-map.md](./generated/route-map.md)
+- [route-map.md](./generated/route-map.md) - current HTTP surface and access rules
 
 ## Core References
 

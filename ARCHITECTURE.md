@@ -5,21 +5,45 @@
 The application is structured as:
 
 ```text
-routes -> services -> repos
+routes -> controllers -> services -> repos
 ```
 
 ### Routes
 
-Routes translate HTTP requests into service calls.
+Routes translate HTTP requests into controller calls.
 
 Responsibilities:
 
 - attach middleware
 - validate request shape
-- call services
-- return HTTP responses
+- delegate to controllers
 
 Routes should avoid owning business rules.
+
+Current route modules:
+
+- `src/routes/users.js`
+- `src/routes/wallets.js`
+- `src/routes/transfers.js`
+
+System routes (`/`, `/health`, `/api-docs`) are attached directly in `src/app.js`.
+
+### Controllers
+
+Controllers translate Express request state into service calls and HTTP responses.
+
+Responsibilities:
+
+- read validated params, body, and authenticated user data
+- call services
+- choose response status codes for success paths
+- pass failures to the error middleware
+
+Current controller modules:
+
+- `src/controllers/users.js`
+- `src/controllers/wallets.js`
+- `src/controllers/transfers.js`
 
 ### Services
 
@@ -67,10 +91,22 @@ This keeps auth concerns out of repositories.
 ## Error Handling
 
 - Validation errors are handled in `src/middlewares/validation.js`.
+- Authentication failures are handled in `src/middlewares/auth.js`.
+- Self-only user mutation checks are handled in `src/middlewares/authorizeSelf.js`.
 - Domain and application errors are defined in `src/lib/errors.js`.
 - Final HTTP error translation happens in `src/middlewares/errorHandler.js`.
 
 Expected application failures should surface with explicit status codes.
+
+Current API conventions:
+
+- validation errors return `400` with `message` plus a `details` array
+- missing bearer token returns `401` with `Missing Authorization header!`
+- malformed bearer header returns `401` with `Malformed authorization header`
+- invalid or expired token returns `401` with `Invalid or expired token`
+- ownership failures return `403`
+- missing resources return `404`
+- unique username violations return `409`
 
 ## Wallet Rules
 
@@ -78,6 +114,7 @@ Expected application failures should surface with explicit status codes.
 - Users can only view and delete their own wallets.
 - Wallet balances are increased through explicit deposit operations.
 - Transfers are the main cross-wallet balance-changing operation.
+- Wallet creation always starts with a zero balance.
 
 The API intentionally does not expose a generic public "set wallet balance" route anymore.
 
@@ -105,5 +142,7 @@ Important transfer invariants:
 - Development DB: `wallet_db`
 - Test DB: `wallet_test_db`
 
-Test scripts explicitly run with `NODE_ENV=test`, and the test harness truncates test tables before each test for deterministic integration tests.
-CI validates the backend by running lint and the full test suite against that isolated test database.
+- The Docker Compose setup creates the development database only; create `wallet_test_db` separately before running tests.
+- Test scripts explicitly run with `NODE_ENV=test`.
+- The test harness truncates `transfers`, `wallets`, and `users` before each test for deterministic integration tests.
+- Development migrations are usually run through `npm run knex -- migrate:latest`.
